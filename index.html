@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Open Wiki</title>
+<script src="https://unpkg.com/@supabase/supabase-js"></script>
+<style>
+body { font-family: Arial; margin: 30px; background: #111; color: #eee }
+input, textarea, button { background:#222;color:white;border:1px solid #555;padding:5px }
+button{cursor:pointer}
+a{color:#6af}
+pre{white-space:pre-wrap}
+</style>
+</head>
+<body>
+
+<h1>Open Wiki</h1>
+
+<input id="search" placeholder="Search pages..." oninput="filterPages()"><br><br>
+
+<input id="title" placeholder="Page title" /><br><br>
+<textarea id="content" rows="12" cols="80"></textarea><br>
+
+<button onclick="save()">Save</button>
+<button onclick="loadHistory()">History</button>
+
+<h2>Pages</h2>
+<ul id="list"></ul>
+
+<div id="view"></div>
+<div id="history"></div>
+
+<script>
+const SUPABASE_URL = "https://xoxnnfdchijdvdyrfbek.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Escape HTML
+function safe(t){
+  let d = document.createElement("div");
+  d.innerText = t;
+  return d.innerHTML;
+}
+
+// Search filter
+function filterPages(){
+  const q = search.value.toLowerCase();
+  document.querySelectorAll("#list li").forEach(li=>{
+    li.style.display = li.innerText.toLowerCase().includes(q) ? 'block' : 'none';
+  });
+}
+
+// Normalize titles
+function normalize(t){
+  return t.trim().replace(/\s+/g,' ');
+}
+
+// Rate limit
+async function checkRateLimit(){
+  const ip = await fetch("https://api.ipify.org").then(r=>r.text());
+  const now = new Date();
+
+  const { data } = await sb.from("throttle").select("*").eq("ip",ip).single();
+
+  if(data){
+    let diff = (now - new Date(data.last))/1000;
+    if(diff < 10) throw "Slow down (anti-spam active)";
+    await sb.from("throttle").update({last:now}).eq("ip",ip);
+  } else {
+    await sb.from("throttle").insert({ip, last:now});
+  }
+}
+
+// Load pages
+async function load(){
+  const { data } = await sb.from("pages").select("*").order("title");
+  list.innerHTML="";
+  data.forEach(p=>{
+    list.innerHTML += `<li><a href="#" onclick="openPage('${safe(p.title)}')">${safe(p.title)}</a></li>`;
+  });
+}
+
+// Open a page
+async function openPage(title){
+  const { data } = await sb.from("pages").select("*").eq("title",title).single();
+
+  view.innerHTML = `<h2>${safe(data.title)}</h2><pre>${safe(data.content)}</pre>`;
+  titleInput.value = data.title;
+  content.value = data.content;
+  history.innerHTML = "";
+}
+
+// Save page
+async function save(){
+  const title = normalize(titleInput.value);
+  const text = content.value;
+
+  if(!title) return alert("Title required");
+
+  await checkRateLimit();
+
+  let { data } = await sb.from("pages").select("*").eq("title",title).single();
+
+  if(data && data.locked) return alert("This page is locked");
+
+  const { data:page } = await sb.from("pages")
+    .upsert({title,content:text,updated:new Date()})
+    .select().single();
+
+  await sb.from("edits").insert({
+    page_id: page.id,
+    content: text
+  });
+
+  load();
+}
+
+// Load history
+async function loadHistory(){
+  const title = normalize(titleInput.value);
+  if(!title) return alert("Open a page first");
+
+  const { data: page } = await sb.from("pages").select("*").eq("title",title).single();
+  const { data } = await sb.from("edits").select("*")
+    .eq("page_id",page.id)
+    .order("edited",{ascending:false});
+
+  history.innerHTML="<h3>History</h3>";
+  data.forEach(e=>{
+    history.innerHTML += `
+    <div style="border:1px solid #444;margin:5px;padding:5px">
+      <small>${new Date(e.edited).toLocaleString()}</small>
+      <button onclick="restore(${page.id},'${btoa(e.content)}')">Restore</button>
+    </div>`;
+  });
+}
+
+// Restore version
+async function restore(id,encoded){
+  let text = atob(encoded);
+  await sb.from("pages").update({content:text,updated:new Date()}).eq("id",id);
+  alert("Restored");
+  load();
+}
+
+const titleInput = document.getElementById("title");
+load();
+</script>
+
+</body>
+</html>
