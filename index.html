@@ -4,71 +4,103 @@
 <meta charset="UTF-8">
 <title>OpenWiki</title>
 <script src="https://unpkg.com/@supabase/supabase-js"></script>
+
 <style>
-body{font-family:Arial;margin:0;background:#f6f6f6}
-#top{background:white;padding:12px;border-bottom:1px solid #ccc}
-#content{background:white;padding:22px}
-#view{margin-top:10px}
-button{padding:6px 12px}
+body{margin:0;font-family:Arial;background:#f6f6f6}
+#topbar{background:#fff;border-bottom:1px solid #ccc;padding:10px;display:flex;gap:12px;align-items:center}
+#logo{font-weight:bold;font-size:22px}
+#container{display:flex}
+#sidebar{width:240px;background:#f0f0f0;height:100vh;padding:10px;overflow:auto}
+#content{flex:1;background:white;padding:22px}
+#pages a{display:block;padding:4px;text-decoration:none;color:#0645ad}
+#pages a:hover{background:#ddd}
+#title{font-size:28px}
+button{padding:6px 10px}
 </style>
 </head>
 
 <body>
 
-<div id="top">
-  <b>OpenWiki</b>
-  <button id="editBtn" style="float:right;display:none" onclick="editPage()">Edit</button>
+<div id="topbar">
+  <div id="logo">OpenWiki</div>
+  <input id="search" placeholder="Search..." oninput="filterPages()">
+  <button id="editBtn" style="display:none" onclick="editPage()">Edit</button>
+</div>
+
+<div id="container">
+<div id="sidebar">
+  <h3>Pages</h3>
+  <div id="pages"></div>
 </div>
 
 <div id="content">
   <h1 id="title"></h1>
   <div id="view"></div>
 </div>
+</div>
 
 <script>
-// ===== CONFIG =====
-const SUPABASE_URL = "https://xoxnnfdchijdvdyrfbek.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
-// =================
+// CONFIG
+const SUPABASE_URL="https://xoxnnfdchijdvdyrfbek.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// utils
+function safe(t){let d=document.createElement("div");d.innerText=t||"";return d.innerHTML}
+function param(x){return new URLSearchParams(location.search).get(x)}
 
-function safe(t){ const d=document.createElement("div"); d.innerText=t||""; return d.innerHTML; }
-function param(name){ return new URLSearchParams(location.search).get(name); }
+const current = param("page");
 
-const pageTitle = param("page");
-if(!pageTitle){
-  document.body.innerHTML = "<h2>No page specified</h2>";
-  throw "";
+// list
+async function loadPages(){
+ const {data}=await sb.from("pages").select("title").order("title");
+ pages.innerHTML="";
+ (data||[]).forEach(p=>{
+   pages.innerHTML+=`<a href="?page=${encodeURIComponent(p.title)}">${safe(p.title)}</a>`;
+ })
 }
 
-async function load(){
-  const { data } = await sb.from("pages").select("*").eq("title",pageTitle).single();
+async function loadArticle(){
+ if(!current){
+   title.innerHTML="Welcome to OpenWiki";
+   view.innerHTML="Select a page or create a new one.";
+   editBtn.style.display="none";
+   return;
+ }
 
-  // Page does not exist → redirect to edit
-  if(!data){
-    location.href = "edit.html?page=" + encodeURIComponent(pageTitle);
-    return;
-  }
+ const {data}=await sb.from("pages").select("*").eq("title",current).single();
 
-  document.getElementById("title").innerText = data.title;
-  document.getElementById("view").innerHTML = render(data.content);
-  document.getElementById("editBtn").style.display = "inline";
+ if(!data){
+   location.href="create.html?title="+encodeURIComponent(current);
+   return;
+ }
+
+ title.innerText = data.title;
+ view.innerHTML = render(data.content||"");
+ editBtn.style.display="inline";
 }
 
 function editPage(){
-  location.href = "edit.html?page=" + encodeURIComponent(pageTitle);
+ location.href="edit.html?page="+encodeURIComponent(current);
 }
 
-function render(text){
-  return safe(text||"")
-    .replace(/^==(.+?)==$/gm,"<h2>$1</h2>")
-    .replace(/^===(.+?)===$/gm,"<h3>$1</h3>")
-    .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
-    .replace(/\n/g,"<br>");
+function filterPages(){
+ const q=search.value.toLowerCase();
+ document.querySelectorAll("#pages a").forEach(a=>{
+   a.style.display=a.innerText.toLowerCase().includes(q)?"block":"none";
+ })
 }
 
-load();
+function render(t){
+ return safe(t)
+  .replace(/^==(.+?)==$/gm,"<h2>$1</h2>")
+  .replace(/^===(.+?)===$/gm,"<h3>$1</h3>")
+  .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
+  .replace(/\n/g,"<br>");
+}
+
+loadPages();
+loadArticle();
 </script>
 
 </body>
