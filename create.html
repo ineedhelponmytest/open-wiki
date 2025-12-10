@@ -19,9 +19,17 @@ button{padding:8px 14px}
   <h2>Create Article</h2>
   <input id="title" placeholder="Title">
   <textarea id="content" placeholder="Write here..."></textarea>
+
   <br>
+    <label>
+      <input type="checkbox" id="lock">
+      Make this page read-only (cannot be edited later)
+    </label>
+  <br>
+  <br>
+
   <button onclick="create()">Create</button>
-  <button onclick="cancel()">Cancel</button>
+
 </div>
 
 <script>
@@ -43,9 +51,10 @@ async function create(){
  if(data) return alert("Page already exists");
 
  const now=new Date();
+ const locked = document.getElementById("lock").checked;
+
  const {data:newPage}=await sb.from("pages")
-    .insert({title,content,updated:now})
-    .select().single();
+  .insert({title,content,locked,updated:now})
 
  await sb.from("edits").insert({page_id:newPage.id,content});
 
