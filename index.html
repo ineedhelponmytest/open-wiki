@@ -2,149 +2,180 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Open Wiki</title>
+<title>OpenWiki</title>
 <script src="https://unpkg.com/@supabase/supabase-js"></script>
+
 <style>
-body { font-family: Arial; margin: 30px; background: #111; color: #eee }
-input, textarea, button { background:#222;color:white;border:1px solid #555;padding:5px }
-button{cursor:pointer}
-a{color:#6af}
-pre{white-space:pre-wrap}
+body { margin:0; font-family:Arial, sans-serif; background:#f6f6f6 }
+#topbar { background:#fff; border-bottom:1px solid #ccc; padding:10px; display:flex; align-items:center; }
+#logo { font-weight:bold; font-size:22px; margin-right:15px }
+#container { display:flex }
+#sidebar { width:200px; background:#f0f0f0; height:100vh; padding:10px; overflow:auto }
+#content { flex:1; background:white; padding:20px; }
+#title { width:100%; font-size:26px; border:none; outline:none }
+#view pre { white-space:pre-wrap; font-size:15px }
+#pages a { display:block; padding:4px; text-decoration:none; color:#0645ad }
+#pages a:hover { background:#ddd }
+button { margin:5px; padding:5px }
+textarea { width:100%; height:200px }
+#toc { background:#f9f9f9; padding:10px; border:1px solid #ccc; margin-bottom:10px }
+.history-item { border-bottom:1px solid #ddd; padding:5px }
+.restore { float:right }
+@media(max-width:800px){
+  #sidebar { display:none }
+}
 </style>
 </head>
 <body>
 
-<h1>Open Wiki</h1>
+<div id="topbar">
+  <div id="logo">OpenWiki</div>
+  <input id="search" placeholder="Search..." oninput="filterPages()">
+</div>
 
-<input id="search" placeholder="Search pages..." oninput="filterPages()"><br><br>
+<div id="container">
 
-<input id="title" placeholder="Page title" /><br><br>
-<textarea id="content" rows="12" cols="80"></textarea><br>
+<div id="sidebar">
+<h3>Pages</h3>
+<div id="pages"></div>
+</div>
+
+<div id="content">
+
+<input id="title" placeholder="Article title">
+<div id="toc"></div>
+
+<textarea id="editor"></textarea><br>
 
 <button onclick="save()">Save</button>
 <button onclick="loadHistory()">History</button>
 
-<h2>Pages</h2>
-<ul id="list"></ul>
+<hr>
 
 <div id="view"></div>
 <div id="history"></div>
 
+</div>
+</div>
+
+<script>
 <script>
 const SUPABASE_URL = "https://xoxnnfdchijdvdyrfbek.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Escape HTML
-function safe(t){
-  let d = document.createElement("div");
-  d.innerText = t;
-  return d.innerHTML;
+function safe(t){ let d=document.createElement("div"); d.innerText=t; return d.innerHTML; }
+function normalize(t){ return t.trim().replace(/\s+/g,' '); }
+
+// Load pages list
+async function loadPages(){
+ const { data } = await sb.from("pages").select("title").order("title");
+ pages.innerHTML='';
+ data.forEach(p=>{
+   pages.innerHTML+=`<a href="?page=${encodeURIComponent(p.title)}">${safe(p.title)}</a>`;
+ });
 }
 
-// Search filter
-function filterPages(){
-  const q = search.value.toLowerCase();
-  document.querySelectorAll("#list li").forEach(li=>{
-    li.style.display = li.innerText.toLowerCase().includes(q) ? 'block' : 'none';
-  });
+// Open page by URL
+async function openFromURL(){
+ const params = new URLSearchParams(window.location.search);
+ const title = params.get("page");
+ if(title) openPage(decodeURIComponent(title));
 }
 
-// Normalize titles
-function normalize(t){
-  return t.trim().replace(/\s+/g,' ');
-}
-
-// Rate limit
-async function checkRateLimit(){
-  const ip = await fetch("https://api.ipify.org").then(r=>r.text());
-  const now = new Date();
-
-  const { data } = await sb.from("throttle").select("*").eq("ip",ip).single();
-
-  if(data){
-    let diff = (now - new Date(data.last))/1000;
-    if(diff < 10) throw "Slow down (anti-spam active)";
-    await sb.from("throttle").update({last:now}).eq("ip",ip);
-  } else {
-    await sb.from("throttle").insert({ip, last:now});
-  }
-}
-
-// Load pages
-async function load(){
-  const { data } = await sb.from("pages").select("*").order("title");
-  list.innerHTML="";
-  data.forEach(p=>{
-    list.innerHTML += `<li><a href="#" onclick="openPage('${safe(p.title)}')">${safe(p.title)}</a></li>`;
-  });
-}
-
-// Open a page
+// Open page
 async function openPage(title){
-  const { data } = await sb.from("pages").select("*").eq("title",title).single();
+ history.pushState({}, "", "?page=" + encodeURIComponent(title));
 
-  view.innerHTML = `<h2>${safe(data.title)}</h2><pre>${safe(data.content)}</pre>`;
-  titleInput.value = data.title;
-  content.value = data.content;
-  history.innerHTML = "";
+ const { data } = await sb.from("pages").select("*").eq("title",title).single();
+ titleInput.value=data.title;
+ editor.value=data.content;
+
+ view.innerHTML=`<h1>${safe(data.title)}</h1>`+render(data.content);
+ buildTOC();
+ historyDiv.innerHTML='';
 }
 
 // Save page
 async function save(){
-  const title = normalize(titleInput.value);
-  const text = content.value;
+ const title=normalize(titleInput.value);
+ if(!title) return alert("Title required");
 
-  if(!title) return alert("Title required");
+ const text=editor.value;
+ const now=new Date();
 
-  await checkRateLimit();
+ const { data:page } = await sb.from("pages").upsert({
+   title,content:text,updated:now
+ }).select().single();
 
-  let { data } = await sb.from("pages").select("*").eq("title",title).single();
+ await sb.from("edits").insert({ page_id:page.id, content:text });
 
-  if(data && data.locked) return alert("This page is locked");
-
-  const { data:page } = await sb.from("pages")
-    .upsert({title,content:text,updated:new Date()})
-    .select().single();
-
-  await sb.from("edits").insert({
-    page_id: page.id,
-    content: text
-  });
-
-  load();
+ history.pushState({}, "", "?page=" + encodeURIComponent(title));
+ loadPages();
 }
 
-// Load history
+// History
 async function loadHistory(){
-  const title = normalize(titleInput.value);
-  if(!title) return alert("Open a page first");
+ const title=normalize(titleInput.value);
+ const { data:page } = await sb.from("pages").select("*").eq("title",title).single();
+ const { data } = await sb.from("edits").select("*").eq("page_id",page.id).order("edited",{ascending:false});
 
-  const { data: page } = await sb.from("pages").select("*").eq("title",title).single();
-  const { data } = await sb.from("edits").select("*")
-    .eq("page_id",page.id)
-    .order("edited",{ascending:false});
-
-  history.innerHTML="<h3>History</h3>";
-  data.forEach(e=>{
-    history.innerHTML += `
-    <div style="border:1px solid #444;margin:5px;padding:5px">
-      <small>${new Date(e.edited).toLocaleString()}</small>
-      <button onclick="restore(${page.id},'${btoa(e.content)}')">Restore</button>
-    </div>`;
-  });
+ historyDiv.innerHTML='<h3>History</h3>';
+ data.forEach(e=>{
+   historyDiv.innerHTML+=`
+   <div class="history-item">
+     ${new Date(e.edited).toLocaleString()}
+     <button class="restore" onclick="restore(${page.id},'${btoa(e.content)}')">Restore</button>
+   </div>`;
+ });
 }
 
-// Restore version
-async function restore(id,encoded){
-  let text = atob(encoded);
-  await sb.from("pages").update({content:text,updated:new Date()}).eq("id",id);
-  alert("Restored");
-  load();
+// Restore
+async function restore(id,enc){
+ const text=atob(enc);
+ await sb.from("pages").update({content:text, updated:new Date()}).eq("id",id);
+ alert("Restored");
+ openPage(titleInput.value);
 }
 
-const titleInput = document.getElementById("title");
-load();
+// Search
+function filterPages(){
+ const q=search.value.toLowerCase();
+ document.querySelectorAll("#pages a").forEach(a=>{
+   a.style.display=a.innerText.toLowerCase().includes(q)?"block":"none";
+ });
+}
+
+// Render wiki markup
+function render(text){
+ let html=safe(text)
+ .replace(/^===(.+?)===/gm,"<h3>$1</h3>")
+ .replace(/^==(.+?)==/gm,"<h2>$1</h2>")
+ .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
+ .replace(/\n/g,"<br>");
+ return html;
+}
+
+// TOC
+function buildTOC(){
+ toc.innerHTML="<b>Contents</b><br>";
+ document.querySelectorAll("#view h2").forEach((h,i)=>{
+   h.id="s"+i;
+   toc.innerHTML+=`<a href="#s${i}">${h.innerText}</a><br>`;
+ });
+}
+
+// Back/forward button handling
+window.onpopstate = openFromURL;
+
+const titleInput=document.getElementById("title");
+const editor=document.getElementById("editor");
+const historyDiv=document.getElementById("history");
+
+loadPages();
+openFromURL();
+</script>
+
 </script>
 
 </body>
