@@ -7,22 +7,21 @@
 
 <style>
 body { margin:0; font-family:Arial, sans-serif; background:#f6f6f6 }
-#topbar { background:#fff; border-bottom:1px solid #ccc; padding:10px; display:flex; align-items:center; gap:12px }
+#topbar { background:#fff; border-bottom:1px solid #ccc; padding:10px; display:flex; gap:12px; align-items:center }
 #logo { font-weight:bold; font-size:22px }
 #container { display:flex }
-#sidebar { width:220px; background:#f0f0f0; height:100vh; padding:10px; overflow:auto }
-#content { flex:1; background:white; padding:20px; }
-#title { width:100%; font-size:26px; border:none; outline:none }
-#view pre { white-space:pre-wrap; font-size:15px }
+#sidebar { width:240px; background:#f0f0f0; height:100vh; padding:10px; overflow:auto; }
+#content { flex:1; background:white; padding:22px; }
+#title { width:100%; font-size:28px; border:none; outline:none; }
+#editor { width:100%; height:240px; display:none; }
 #pages a { display:block; padding:4px; text-decoration:none; color:#0645ad }
 #pages a:hover { background:#ddd }
-button { margin:5px; padding:6px 10px; cursor:pointer }
-textarea { width:100%; height:220px; }
-#toc { background:#f9f9f9; padding:10px; border:1px solid #ccc; margin:10px 0 }
-.history-item { border-bottom:1px solid #ddd; padding:5px }
+button { padding:6px 12px; margin-top:8px; cursor:pointer }
+#toc { background:#f9f9f9; border:1px solid #ccc; padding:10px; margin:12px 0 }
+.history-item { border-bottom:1px solid #ddd; padding:6px }
 .restore { float:right }
-@media(max-width:900px){ #sidebar{display:none} }
 kbd{background:#eee;border:1px solid #ccc;border-bottom-width:2px;padding:1px 4px;border-radius:3px}
+@media(max-width:800px){ #sidebar{display:none} }
 </style>
 </head>
 <body>
@@ -30,11 +29,10 @@ kbd{background:#eee;border:1px solid #ccc;border-bottom-width:2px;padding:1px 4p
 <div id="topbar">
   <div id="logo">OpenWiki</div>
   <input id="search" placeholder="Search..." oninput="filterPages()">
-  <span style="color:#777">Tip: headings with <kbd>==</kbd></span>
+  <span style="color:#666">Headings: <kbd>==</kbd> | Bold: <kbd>**</kbd></span>
 </div>
 
 <div id="container">
-
 <div id="sidebar">
   <h3>Pages</h3>
   <div id="pages"></div>
@@ -46,123 +44,187 @@ kbd{background:#eee;border:1px solid #ccc;border-bottom-width:2px;padding:1px 4p
 
 <div id="toc"></div>
 
-<textarea id="editor" placeholder="Write your article here&#10;&#10;Use:&#10;== Heading ==&#10;=== Subheading ===&#10;**bold**"></textarea>
-
-<br>
-<button onclick="save()">Save</button>
-<button onclick="loadHistory()">History</button>
-
-<hr>
-
 <div id="view"></div>
+
+<textarea id="editor" placeholder="Write here..."></textarea>
+
+<div id="buttons">
+  <button id="editBtn" onclick="enableEdit()">Edit</button>
+  <button id="saveBtn" onclick="save()" style="display:none">Save</button>
+  <button id="cancelBtn" onclick="cancelEdit()" style="display:none">Cancel</button>
+  <button id="lockBtn" onclick="toggleLock()">Lock</button>
+  <button onclick="loadHistory()">History</button>
+</div>
+
 <div id="history"></div>
 
 </div>
 </div>
 
 <script>
-// ====================== CONFIG ======================
+// ===================== CONFIG =====================
 const SUPABASE_URL = "https://xoxnnfdchijdvdyrfbek.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
-// ===================================================
+// ================================================
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ===== Utilities =====
-function safe(t){
-  const d=document.createElement("div");
-  d.innerText=t==null?"":String(t);
-  return d.innerHTML;
-}
-function normalize(t){ return (t||"").trim().replace(/\s+/g,' '); }
+// Elements
+const titleInput = document.getElementById("title");
+const editor = document.getElementById("editor");
+const view = document.getElementById("view");
+const pages = document.getElementById("pages");
+const toc = document.getElementById("toc");
+const search = document.getElementById("search");
+const historyDiv = document.getElementById("history");
+const editBtn = document.getElementById("editBtn");
+const saveBtn = document.getElementById("saveBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+const lockBtn = document.getElementById("lockBtn");
 
-// ===== URL Routing =====
+let editing = false;
+let currentPage = null;
+
+// ---------- Utilities ----------
+function safe(t){ const d=document.createElement("div"); d.innerText=t||""; return d.innerHTML; }
+function normalize(t){ return (t||"").trim().replace(/\s+/g," "); }
+
+// ---------- URL Routing ----------
 function updateDraftURL(){
   const t = normalize(titleInput.value);
   if(t) history.replaceState({}, "", "?page=" + encodeURIComponent(t));
 }
-async function openFromURL(){
-  const params = new URLSearchParams(window.location.search);
-  const title = params.get("page");
-  if(title){
-    const { data } = await sb.from("pages").select("*").eq("title", title).single();
-    if(data){
-      openPage(title, false);
-    }else{
-      titleInput.value = title;
-      editor.value = "";
-      view.innerHTML = "<i>New page</i>";
-      toc.innerHTML = "";
-      historyDiv.innerHTML = "";
-    }
-  }
-}
+
 window.onpopstate = openFromURL;
 
-// ===== Page List =====
+// ---------- Load URL on open ----------
+async function openFromURL(){
+  const params = new URLSearchParams(location.search);
+  const title = params.get("page");
+  if(!title) return;
+  const { data } = await sb.from("pages").select("*").eq("title",title).single();
+  if(data){
+    openPage(title,false);
+  }else{
+    titleInput.value=title;
+    view.innerHTML="<i>New page</i>";
+    editor.value="";
+    toc.innerHTML="";
+    historyDiv.innerHTML="";
+  }
+}
+
+// ---------- List Pages ----------
 async function loadPages(){
   const { data } = await sb.from("pages").select("title").order("title");
-  pages.innerHTML='';
+  pages.innerHTML="";
   (data||[]).forEach(p=>{
     pages.innerHTML += `<a href="?page=${encodeURIComponent(p.title)}">${safe(p.title)}</a>`;
   });
 }
 
-// ===== Open Page =====
-async function openPage(title, push=true){
+// ---------- Open Page ----------
+async function openPage(title,push=true){
   if(push) history.pushState({}, "", "?page=" + encodeURIComponent(title));
-  const { data } = await sb.from("pages").select("*").eq("title", title).single();
-  titleInput.value = data.title;
-  editor.value = data.content || "";
+  const { data } = await sb.from("pages").select("*").eq("title",title).single();
+  currentPage = data;
+  titleInput.value=data.title;
+  editor.value=data.content || "";
   view.innerHTML = `<h1>${safe(data.title)}</h1>` + render(data.content||"");
   buildTOC();
-  historyDiv.innerHTML='';
+  disableEdit();
+  updateLockUI();
+  historyDiv.innerHTML="";
 }
 
-// ===== Save =====
+// ---------- Save ----------
 async function save(){
+  if(!editing) return alert("Press Edit first");
+  if(currentPage?.locked) return alert("This page is locked");
+
   const title = normalize(titleInput.value);
   if(!title) return alert("Title required");
 
-  const text = editor.value;
+  const content = editor.value;
   const now = new Date();
 
   const { data:page } = await sb.from("pages")
-    .upsert({ title, content:text, updated:now })
+    .upsert({ title, content, updated:now })
     .select().single();
 
-  await sb.from("edits").insert({ page_id:page.id, content:text });
+  await sb.from("edits").insert({ page_id:page.id, content });
 
-  history.pushState({}, "", "?page=" + encodeURIComponent(title));
+  openPage(title,false);
   loadPages();
-  openPage(title, false);
 }
 
-// ===== History =====
+// ---------- Edit Mode ----------
+function enableEdit(){
+  if(currentPage?.locked) return alert("Page is locked");
+  editing=true;
+  editor.style.display="block";
+  saveBtn.style.display="inline";
+  cancelBtn.style.display="inline";
+}
+
+function disableEdit(){
+  editing=false;
+  editor.style.display="none";
+  saveBtn.style.display="none";
+  cancelBtn.style.display="none";
+}
+
+function cancelEdit(){
+  disableEdit();
+  if(currentPage) openPage(currentPage.title,false);
+}
+
+// ---------- Lock ----------
+async function toggleLock(){
+  if(!currentPage) return;
+  const state = !currentPage.locked;
+
+  const { error } = await sb.from("pages")
+    .update({ locked:state })
+    .eq("id",currentPage.id);
+
+  if(error) return alert("Failed");
+  currentPage.locked = state;
+  updateLockUI();
+}
+
+function updateLockUI(){
+  lockBtn.textContent = currentPage?.locked ? "Unlock" : "Lock";
+  editBtn.style.display = currentPage?.locked ? "none" : "inline";
+  if(currentPage?.locked) disableEdit();
+}
+
+// ---------- History ----------
 async function loadHistory(){
-  const title = normalize(titleInput.value);
-  if(!title) return alert("Open a page first");
-  const { data:page } = await sb.from("pages").select("*").eq("title",title).single();
+  if(!currentPage) return;
   const { data } = await sb.from("edits")
-    .select("*").eq("page_id",page.id)
-    .order("edited",{ascending:false});
-  historyDiv.innerHTML = "<h3>History</h3>";
+    .select("*")
+    .eq("page_id",currentPage.id)
+    .order("edited",{ ascending:false });
+
+  historyDiv.innerHTML="<h3>History</h3>";
   (data||[]).forEach(e=>{
     historyDiv.innerHTML += `
       <div class="history-item">
         ${new Date(e.edited).toLocaleString()}
-        <button class="restore" onclick="restore(${page.id}, '${btoa(e.content||'')}')">Restore</button>
+        <button class="restore" onclick="restore('${btoa(e.content||"")}')">Restore</button>
       </div>`;
   });
 }
-async function restore(id, enc){
-  const text = atob(enc||"");
-  await sb.from("pages").update({ content:text, updated:new Date() }).eq("id", id);
-  alert("Restored");
-  openPage(titleInput.value);
+
+async function restore(enc){
+  if(!currentPage) return;
+  const text = atob(enc);
+  await sb.from("pages").update({ content:text, updated:new Date() }).eq("id",currentPage.id);
+  openPage(currentPage.title,false);
 }
 
-// ===== Search =====
+// ---------- Search ----------
 function filterPages(){
   const q = search.value.toLowerCase();
   document.querySelectorAll("#pages a").forEach(a=>{
@@ -170,28 +232,25 @@ function filterPages(){
   });
 }
 
-// ===== Wiki Markup =====
+// ---------- Wiki Markup ----------
 function render(text){
-  let html = safe(text)
+  return safe(text)
     .replace(/^====(.+?)====$/gm,"<h4>$1</h4>")
     .replace(/^===(.+?)===$/gm,"<h3>$1</h3>")
     .replace(/^==(.+?)==$/gm,"<h2>$1</h2>")
     .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
     .replace(/\n/g,"<br>");
-  return html;
 }
+
 function buildTOC(){
-  toc.innerHTML = "<b>Contents</b><br>";
+  toc.innerHTML="<b>Contents</b><br>";
   document.querySelectorAll("#view h2,#view h3").forEach((h,i)=>{
-    h.id = "s" + i;
-    toc.innerHTML += `<a href="#s${i}">${safe(h.innerText)}</a><br>`;
+    h.id="s"+i;
+    toc.innerHTML+=`<a href="#s${i}">${safe(h.innerText)}</a><br>`;
   });
 }
 
-// ===== Init =====
-const titleInput = document.getElementById("title");
-const editor = document.getElementById("editor");
-const historyDiv = document.getElementById("history");
+// ---------- Init ----------
 loadPages();
 openFromURL();
 </script>
