@@ -2,74 +2,68 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Edit Page</title>
+<title>Edit Article</title>
 <script src="https://unpkg.com/@supabase/supabase-js"></script>
 <style>
 body{font-family:Arial;background:#f6f6f6}
 #box{background:white;padding:20px}
-input,textarea{width:100%;margin-top:10px}
-button{padding:8px 14px;margin-top:10px}
+textarea{width:100%;height:300px}
+button{padding:8px 14px}
 </style>
 </head>
 
 <body>
 
 <div id="box">
-  <h2>Edit Page</h2>
-
-  <input id="title" placeholder="Title">
-
-  <textarea id="content" rows="16" placeholder="Write content here..."></textarea>
-
-  <br>
+  <h2 id="title"></h2>
+  <textarea id="content"></textarea><br>
   <button onclick="save()">Save</button>
   <button onclick="cancel()">Cancel</button>
 </div>
 
 <script>
-// ===== CONFIG =====
-const SUPABASE_URL = "https://xoxnnfdchijdvdyrfbek.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
-// =================
+const SUPABASE_URL="https://xoxnnfdchijdvdyrfbek.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+function param(x){ return new URLSearchParams(location.search).get(x); }
 
-function param(name){ return new URLSearchParams(location.search).get(name); }
 const page = param("page");
 
-const titleInput = document.getElementById("title");
-const contentInput = document.getElementById("content");
-
-if(page) load();
-
-async function load(){
-  const { data } = await sb.from("pages").select("*").eq("title",page).single();
-  if(data){
-    titleInput.value = data.title;
-    contentInput.value = data.content || "";
-  }else{
-    titleInput.value = page;
-  }
+if(!page){
+  alert("No article specified");
+  location.href="index.html";
 }
 
+const title = document.getElementById("title");
+const content = document.getElementById("content");
+
+async function load(){
+ const {data}=await sb.from("pages").select("*").eq("title",page).single();
+ if(!data){
+   alert("Article does not exist");
+   location.href="index.html";
+   return;
+ }
+ title.innerText=data.title;
+ content.value=data.content||"";
+}
+load();
+
 async function save(){
-  const title = titleInput.value.trim();
-  const content = contentInput.value;
+ const text=content.value;
+ const now=new Date();
 
-  if(!title) return alert("Title required");
+ await sb.from("pages").update({content:text,updated:now}).eq("title",page);
 
-  const { data } = await sb.from("pages")
-    .upsert({ title, content, updated:new Date() })
-    .select().single();
+ const {data}=await sb.from("pages").select("*").eq("title",page).single();
+ if(data) await sb.from("edits").insert({page_id:data.id,content:text});
 
-  await sb.from("edits").insert({ page_id:data.id, content });
-
-  location.href = "index.html?page=" + encodeURIComponent(title);
+ location.href="index.html?page="+encodeURIComponent(page);
 }
 
 function cancel(){
-  if(page) location.href = "index.html?page=" + encodeURIComponent(page);
-  else location.href = "index.html";
+ location.href="index.html?page="+encodeURIComponent(page);
 }
 </script>
 
