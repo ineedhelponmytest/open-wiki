@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Create Article</title>
+<script src="https://unpkg.com/@supabase/supabase-js"></script>
+<style>
+body{font-family:Arial;background:#f6f6f6}
+#box{background:white;padding:20px}
+input,textarea{width:100%;margin-top:10px}
+textarea{height:280px}
+button{padding:8px 14px}
+</style>
+</head>
+
+<body>
+
+<div id="box">
+  <h2>Create Article</h2>
+  <input id="title" placeholder="Title">
+  <textarea id="content" placeholder="Write here..."></textarea>
+  <br>
+  <button onclick="create()">Create</button>
+  <button onclick="cancel()">Cancel</button>
+</div>
+
+<script>
+const SUPABASE_URL="PASTE_URL";
+const SUPABASE_KEY="PASTE_KEY";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+function param(x){return new URLSearchParams(location.search).get(x)}
+const prefill = param("title");
+
+if(prefill) document.getElementById("title").value=prefill;
+
+async function create(){
+ const title=document.getElementById("title").value.trim();
+ const content=document.getElementById("content").value;
+ if(!title) return alert("Title required");
+
+ const {data}=await sb.from("pages").select("id").eq("title",title).single();
+ if(data) return alert("Page already exists");
+
+ const now=new Date();
+ const {data:newPage}=await sb.from("pages")
+    .insert({title,content,updated:now})
+    .select().single();
+
+ await sb.from("edits").insert({page_id:newPage.id,content});
+
+ location.href="index.html?page="+encodeURIComponent(title);
+}
+
+function cancel(){
+ location.href="index.html";
+}
+</script>
+
+</body>
+</html>
