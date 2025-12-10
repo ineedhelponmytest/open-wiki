@@ -7,23 +7,22 @@
 
 <style>
 body { margin:0; font-family:Arial, sans-serif; background:#f6f6f6 }
-#topbar { background:#fff; border-bottom:1px solid #ccc; padding:10px; display:flex; align-items:center; }
-#logo { font-weight:bold; font-size:22px; margin-right:15px }
+#topbar { background:#fff; border-bottom:1px solid #ccc; padding:10px; display:flex; align-items:center; gap:12px }
+#logo { font-weight:bold; font-size:22px }
 #container { display:flex }
-#sidebar { width:200px; background:#f0f0f0; height:100vh; padding:10px; overflow:auto }
+#sidebar { width:220px; background:#f0f0f0; height:100vh; padding:10px; overflow:auto }
 #content { flex:1; background:white; padding:20px; }
 #title { width:100%; font-size:26px; border:none; outline:none }
 #view pre { white-space:pre-wrap; font-size:15px }
 #pages a { display:block; padding:4px; text-decoration:none; color:#0645ad }
 #pages a:hover { background:#ddd }
-button { margin:5px; padding:5px }
-textarea { width:100%; height:200px }
-#toc { background:#f9f9f9; padding:10px; border:1px solid #ccc; margin-bottom:10px }
+button { margin:5px; padding:6px 10px; cursor:pointer }
+textarea { width:100%; height:220px; }
+#toc { background:#f9f9f9; padding:10px; border:1px solid #ccc; margin:10px 0 }
 .history-item { border-bottom:1px solid #ddd; padding:5px }
 .restore { float:right }
-@media(max-width:800px){
-  #sidebar { display:none }
-}
+@media(max-width:900px){ #sidebar{display:none} }
+kbd{background:#eee;border:1px solid #ccc;border-bottom-width:2px;padding:1px 4px;border-radius:3px}
 </style>
 </head>
 <body>
@@ -31,22 +30,25 @@ textarea { width:100%; height:200px }
 <div id="topbar">
   <div id="logo">OpenWiki</div>
   <input id="search" placeholder="Search..." oninput="filterPages()">
+  <span style="color:#777">Tip: headings with <kbd>==</kbd></span>
 </div>
 
 <div id="container">
 
 <div id="sidebar">
-<h3>Pages</h3>
-<div id="pages"></div>
+  <h3>Pages</h3>
+  <div id="pages"></div>
 </div>
 
 <div id="content">
 
-<input id="title" placeholder="Article title">
+<input id="title" placeholder="Article title" oninput="updateDraftURL()">
+
 <div id="toc"></div>
 
-<textarea id="editor"></textarea><br>
+<textarea id="editor" placeholder="Write your article here&#10;&#10;Use:&#10;== Heading ==&#10;=== Subheading ===&#10;**bold**"></textarea>
 
+<br>
 <button onclick="save()">Save</button>
 <button onclick="loadHistory()">History</button>
 
@@ -59,123 +61,139 @@ textarea { width:100%; height:200px }
 </div>
 
 <script>
-<script>
+// ====================== CONFIG ======================
 const SUPABASE_URL = "https://xoxnnfdchijdvdyrfbek.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhveG5uZmRjaGlqZHZkeXJmYmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MDU4MzAsImV4cCI6MjA4MDk4MTgzMH0.3AlIWOPTDPVopMtdc2orgmSvEtBGAtO7aXQpVpeOCLU";
+// ===================================================
+
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function safe(t){ let d=document.createElement("div"); d.innerText=t; return d.innerHTML; }
-function normalize(t){ return t.trim().replace(/\s+/g,' '); }
-
-// Load pages list
-async function loadPages(){
- const { data } = await sb.from("pages").select("title").order("title");
- pages.innerHTML='';
- data.forEach(p=>{
-   pages.innerHTML+=`<a href="?page=${encodeURIComponent(p.title)}">${safe(p.title)}</a>`;
- });
+// ===== Utilities =====
+function safe(t){
+  const d=document.createElement("div");
+  d.innerText=t==null?"":String(t);
+  return d.innerHTML;
 }
+function normalize(t){ return (t||"").trim().replace(/\s+/g,' '); }
 
-// Open page by URL
+// ===== URL Routing =====
+function updateDraftURL(){
+  const t = normalize(titleInput.value);
+  if(t) history.replaceState({}, "", "?page=" + encodeURIComponent(t));
+}
 async function openFromURL(){
- const params = new URLSearchParams(window.location.search);
- const title = params.get("page");
- if(title) openPage(decodeURIComponent(title));
+  const params = new URLSearchParams(window.location.search);
+  const title = params.get("page");
+  if(title){
+    const { data } = await sb.from("pages").select("*").eq("title", title).single();
+    if(data){
+      openPage(title, false);
+    }else{
+      titleInput.value = title;
+      editor.value = "";
+      view.innerHTML = "<i>New page</i>";
+      toc.innerHTML = "";
+      historyDiv.innerHTML = "";
+    }
+  }
 }
-
-// Open page
-async function openPage(title){
- history.pushState({}, "", "?page=" + encodeURIComponent(title));
-
- const { data } = await sb.from("pages").select("*").eq("title",title).single();
- titleInput.value=data.title;
- editor.value=data.content;
-
- view.innerHTML=`<h1>${safe(data.title)}</h1>`+render(data.content);
- buildTOC();
- historyDiv.innerHTML='';
-}
-
-// Save page
-async function save(){
- const title=normalize(titleInput.value);
- if(!title) return alert("Title required");
-
- const text=editor.value;
- const now=new Date();
-
- const { data:page } = await sb.from("pages").upsert({
-   title,content:text,updated:now
- }).select().single();
-
- await sb.from("edits").insert({ page_id:page.id, content:text });
-
- history.pushState({}, "", "?page=" + encodeURIComponent(title));
- loadPages();
-}
-
-// History
-async function loadHistory(){
- const title=normalize(titleInput.value);
- const { data:page } = await sb.from("pages").select("*").eq("title",title).single();
- const { data } = await sb.from("edits").select("*").eq("page_id",page.id).order("edited",{ascending:false});
-
- historyDiv.innerHTML='<h3>History</h3>';
- data.forEach(e=>{
-   historyDiv.innerHTML+=`
-   <div class="history-item">
-     ${new Date(e.edited).toLocaleString()}
-     <button class="restore" onclick="restore(${page.id},'${btoa(e.content)}')">Restore</button>
-   </div>`;
- });
-}
-
-// Restore
-async function restore(id,enc){
- const text=atob(enc);
- await sb.from("pages").update({content:text, updated:new Date()}).eq("id",id);
- alert("Restored");
- openPage(titleInput.value);
-}
-
-// Search
-function filterPages(){
- const q=search.value.toLowerCase();
- document.querySelectorAll("#pages a").forEach(a=>{
-   a.style.display=a.innerText.toLowerCase().includes(q)?"block":"none";
- });
-}
-
-// Render wiki markup
-function render(text){
- let html=safe(text)
- .replace(/^===(.+?)===/gm,"<h3>$1</h3>")
- .replace(/^==(.+?)==/gm,"<h2>$1</h2>")
- .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
- .replace(/\n/g,"<br>");
- return html;
-}
-
-// TOC
-function buildTOC(){
- toc.innerHTML="<b>Contents</b><br>";
- document.querySelectorAll("#view h2").forEach((h,i)=>{
-   h.id="s"+i;
-   toc.innerHTML+=`<a href="#s${i}">${h.innerText}</a><br>`;
- });
-}
-
-// Back/forward button handling
 window.onpopstate = openFromURL;
 
-const titleInput=document.getElementById("title");
-const editor=document.getElementById("editor");
-const historyDiv=document.getElementById("history");
+// ===== Page List =====
+async function loadPages(){
+  const { data } = await sb.from("pages").select("title").order("title");
+  pages.innerHTML='';
+  (data||[]).forEach(p=>{
+    pages.innerHTML += `<a href="?page=${encodeURIComponent(p.title)}">${safe(p.title)}</a>`;
+  });
+}
 
+// ===== Open Page =====
+async function openPage(title, push=true){
+  if(push) history.pushState({}, "", "?page=" + encodeURIComponent(title));
+  const { data } = await sb.from("pages").select("*").eq("title", title).single();
+  titleInput.value = data.title;
+  editor.value = data.content || "";
+  view.innerHTML = `<h1>${safe(data.title)}</h1>` + render(data.content||"");
+  buildTOC();
+  historyDiv.innerHTML='';
+}
+
+// ===== Save =====
+async function save(){
+  const title = normalize(titleInput.value);
+  if(!title) return alert("Title required");
+
+  const text = editor.value;
+  const now = new Date();
+
+  const { data:page } = await sb.from("pages")
+    .upsert({ title, content:text, updated:now })
+    .select().single();
+
+  await sb.from("edits").insert({ page_id:page.id, content:text });
+
+  history.pushState({}, "", "?page=" + encodeURIComponent(title));
+  loadPages();
+  openPage(title, false);
+}
+
+// ===== History =====
+async function loadHistory(){
+  const title = normalize(titleInput.value);
+  if(!title) return alert("Open a page first");
+  const { data:page } = await sb.from("pages").select("*").eq("title",title).single();
+  const { data } = await sb.from("edits")
+    .select("*").eq("page_id",page.id)
+    .order("edited",{ascending:false});
+  historyDiv.innerHTML = "<h3>History</h3>";
+  (data||[]).forEach(e=>{
+    historyDiv.innerHTML += `
+      <div class="history-item">
+        ${new Date(e.edited).toLocaleString()}
+        <button class="restore" onclick="restore(${page.id}, '${btoa(e.content||'')}')">Restore</button>
+      </div>`;
+  });
+}
+async function restore(id, enc){
+  const text = atob(enc||"");
+  await sb.from("pages").update({ content:text, updated:new Date() }).eq("id", id);
+  alert("Restored");
+  openPage(titleInput.value);
+}
+
+// ===== Search =====
+function filterPages(){
+  const q = search.value.toLowerCase();
+  document.querySelectorAll("#pages a").forEach(a=>{
+    a.style.display = a.innerText.toLowerCase().includes(q) ? "block" : "none";
+  });
+}
+
+// ===== Wiki Markup =====
+function render(text){
+  let html = safe(text)
+    .replace(/^====(.+?)====$/gm,"<h4>$1</h4>")
+    .replace(/^===(.+?)===$/gm,"<h3>$1</h3>")
+    .replace(/^==(.+?)==$/gm,"<h2>$1</h2>")
+    .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
+    .replace(/\n/g,"<br>");
+  return html;
+}
+function buildTOC(){
+  toc.innerHTML = "<b>Contents</b><br>";
+  document.querySelectorAll("#view h2,#view h3").forEach((h,i)=>{
+    h.id = "s" + i;
+    toc.innerHTML += `<a href="#s${i}">${safe(h.innerText)}</a><br>`;
+  });
+}
+
+// ===== Init =====
+const titleInput = document.getElementById("title");
+const editor = document.getElementById("editor");
+const historyDiv = document.getElementById("history");
 loadPages();
 openFromURL();
-</script>
-
 </script>
 
 </body>
