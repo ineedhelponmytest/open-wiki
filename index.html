@@ -23,7 +23,11 @@ button{padding:6px 10px}
 
 <div id="topbar">
   <div id="logo">OpenWiki</div>
+
   <input id="search" placeholder="Search..." oninput="filterPages()">
+
+  <button onclick="goCreate()">Create Page</button>
+
   <button id="editBtn" style="display:none" onclick="editPage()">Edit</button>
 </div>
 
@@ -82,6 +86,15 @@ async function loadArticle(){
 
 function editPage(){
  location.href="edit.html?page="+encodeURIComponent(current);
+}
+
+function goCreate(){
+  const q = document.getElementById("search").value.trim();
+  if(q){
+    location.href = "create.html?title=" + encodeURIComponent(q);
+  } else {
+    location.href = "create.html";
+  }
 }
 
 function filterPages(){
