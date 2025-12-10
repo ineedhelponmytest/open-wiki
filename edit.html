@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Edit Page</title>
+<script src="https://unpkg.com/@supabase/supabase-js"></script>
+<style>
+body{font-family:Arial;background:#f6f6f6}
+#box{background:white;padding:20px}
+input,textarea{width:100%;margin-top:10px}
+button{padding:8px 14px;margin-top:10px}
+</style>
+</head>
+
+<body>
+
+<div id="box">
+  <h2>Edit Page</h2>
+
+  <input id="title" placeholder="Title">
+
+  <textarea id="content" rows="16" placeholder="Write content here..."></textarea>
+
+  <br>
+  <button onclick="save()">Save</button>
+  <button onclick="cancel()">Cancel</button>
+</div>
+
+<script>
+// ===== CONFIG =====
+const SUPABASE_URL = "PASTE_URL";
+const SUPABASE_KEY = "PASTE_ANON_KEY";
+// =================
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function param(name){ return new URLSearchParams(location.search).get(name); }
+const page = param("page");
+
+const titleInput = document.getElementById("title");
+const contentInput = document.getElementById("content");
+
+if(page) load();
+
+async function load(){
+  const { data } = await sb.from("pages").select("*").eq("title",page).single();
+  if(data){
+    titleInput.value = data.title;
+    contentInput.value = data.content || "";
+  }else{
+    titleInput.value = page;
+  }
+}
+
+async function save(){
+  const title = titleInput.value.trim();
+  const content = contentInput.value;
+
+  if(!title) return alert("Title required");
+
+  const { data } = await sb.from("pages")
+    .upsert({ title, content, updated:new Date() })
+    .select().single();
+
+  await sb.from("edits").insert({ page_id:data.id, content });
+
+  location.href = "index.html?page=" + encodeURIComponent(title);
+}
+
+function cancel(){
+  if(page) location.href = "index.html?page=" + encodeURIComponent(page);
+  else location.href = "index.html";
+}
+</script>
+
+</body>
+</html>
