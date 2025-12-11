@@ -40,6 +40,11 @@ const content = document.getElementById("content");
 
 async function load(){
  const {data}=await sb.from("pages").select("*").eq("title",page).single();
+ if(data.locked === true){
+  alert("This page is locked and cannot be edited.");
+  location.href="index.html?page="+encodeURIComponent(page);
+  return;
+}
  if(!data){
    alert("Article does not exist");
    location.href="index.html";
