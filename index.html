@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>OpenWiki</title>
+<title>The OpenWiki - ineedhelponmytest.com</title>
 <script src="https://unpkg.com/@supabase/supabase-js"></script>
 
 <style>
@@ -22,7 +22,7 @@ button{padding:6px 10px}
 <body>
 
 <div id="topbar">
-  <div id="logo">OpenWiki</div>
+  <div id="logo">The OpenWiki</div>
 
   <input id="search" placeholder="Search..." oninput="filterPages()">
 
@@ -68,8 +68,8 @@ async function loadPages(){
 
 async function loadArticle(){
  if(!current){
-   title.innerHTML="Welcome to OpenWiki";
-   view.innerHTML="Select a page or create a new one.";
+   title.innerHTML="Welcome to the OpenWiki";
+   view.innerHTML="You can click on a page, edit pages, or even create a whole new one!";
    editBtn.style.display="none";
    return;
  }
