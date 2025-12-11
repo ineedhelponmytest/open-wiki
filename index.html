@@ -79,7 +79,7 @@ async function loadArticle(){
    return;
  }
 
- title.innerText = data.title;
+ title.innerText = data.title + (data.locked ? " 🔒" : "");
  view.innerHTML = render(data.content||"");
  editBtn.style.display="inline";
 }
