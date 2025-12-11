@@ -57,7 +57,9 @@ const current = param("page");
 
 // list
 async function loadPages(){
- const {data}=await sb.from("pages").select("title").order("title");
+ const {data}=await sb.from("pages")
+   .select("title, updated")
+   .order("updated", { ascending: false });
  pages.innerHTML="";
  (data||[]).forEach(p=>{
    pages.innerHTML+=`<a href="?page=${encodeURIComponent(p.title)}">${safe(p.title)}</a>`;
